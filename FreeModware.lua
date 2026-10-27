@@ -802,9 +802,6 @@ table.insert(_G.ModWareConnections, jumpConn)
 local noclipConn = RunService.Stepped:Connect(function() if _G.Noclip and lp.Character then for _, v in pairs(lp.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end end)
 table.insert(_G.ModWareConnections, noclipConn)
 
--- [ Mapeamento de Callbacks para Config ]
-local KeybindCallbacks = {}
-
 -- CreateKeybind
 local function CreateKeybind(parent, text, defaultKey, globalName, callback)
     local KFrame = Instance.new("Frame", parent)
@@ -834,24 +831,14 @@ local function CreateKeybind(parent, text, defaultKey, globalName, callback)
 
     _G[globalName] = defaultKey
 
-    local function SetKeybind(keyCode, fireCallback)
-        _G[globalName] = keyCode
-        Box.Text = keyCode.Name
-        if fireCallback and callback then callback(keyCode) end
-    end
-
-    if globalName then
-        KeybindCallbacks[globalName] = function(keyCode)
-            SetKeybind(keyCode, true)
-        end
-    end
-
     Box.MouseButton1Click:Connect(function()
         Box.Text = "Press a key..."
         local conn
         conn = UserInputService.InputBegan:Connect(function(input, processed)
             if not processed and input.UserInputType == Enum.UserInputType.Keyboard then
-                SetKeybind(input.KeyCode, true)
+                _G[globalName] = input.KeyCode
+                Box.Text = input.KeyCode.Name
+                if callback then callback(input.KeyCode) end
                 conn:Disconnect()
             end
         end)
@@ -1095,45 +1082,6 @@ local currentConfigName = "default"
 local selectedConfigInDropdown = "None"
 local autoloadConfig = ""
 
-local function SerializeData()
-    local data = {}
-    for k, v in pairs(_G) do
-        if type(v) == "boolean" or type(v) == "number" or type(v) == "string" then
-            data[k] = v
-        elseif typeof(v) == "EnumItem" then
-            data[k] = {
-                __type = "EnumItem",
-                enumType = tostring(v.EnumType),
-                name = v.Name
-            }
-        end
-    end
-    return data
-end
-
-local function DeserializeData(data)
-    for k, v in pairs(data) do
-        local finalVal = v
-        if type(v) == "table" and v.__type == "EnumItem" then
-            if Enum[v.enumType] and Enum[v.enumType][v.name] then
-                finalVal = Enum[v.enumType][v.name]
-            end
-        end
-        
-        _G[k] = finalVal
-        
-        if ToggleCallbacks[k] then
-            ToggleCallbacks[k](finalVal)
-        end
-        if SliderCallbacks[k] then
-            SliderCallbacks[k](finalVal)
-        end
-        if KeybindCallbacks[k] and typeof(finalVal) == "EnumItem" then
-            KeybindCallbacks[k](finalVal)
-        end
-    end
-end
-
 local function GetSavedConfigsList()
     local files = {}
     if listfiles then
@@ -1168,7 +1116,12 @@ end
 CreateButton(ConfigTab, "Create", function()
     pcall(function()
         if writefile then
-            local data = SerializeData()
+            local data = {}
+            for k, v in pairs(_G) do
+                if type(v) == "boolean" or type(v) == "number" then
+                    data[k] = v
+                end
+            end
             writefile("ModWare_Config_" .. currentConfigName .. ".json", HttpService:JSONEncode(data))
             SendNotify("ModWare Hub", "Config '" .. currentConfigName .. "' Created!", 3)
             RefreshConfigList()
@@ -1180,7 +1133,12 @@ CreateButton(ConfigTab, "Save", function()
     pcall(function()
         local targetName = (selectedConfigInDropdown ~= "None" and selectedConfigInDropdown) or currentConfigName
         if writefile then
-            local data = SerializeData()
+            local data = {}
+            for k, v in pairs(_G) do
+                if type(v) == "boolean" or type(v) == "number" then
+                    data[k] = v
+                end
+            end
             writefile("ModWare_Config_" .. targetName .. ".json", HttpService:JSONEncode(data))
             SendNotify("ModWare Hub", "Config '" .. targetName .. "' Saved!", 3)
             RefreshConfigList()
@@ -1194,7 +1152,15 @@ CreateButton(ConfigTab, "Load", function()
         local fileName = "ModWare_Config_" .. targetName .. ".json"
         if readfile and isfile and isfile(fileName) then
             local decoded = HttpService:JSONDecode(readfile(fileName))
-            DeserializeData(decoded)
+            for k, v in pairs(decoded) do
+                _G[k] = v
+                if ToggleCallbacks[k] then
+                    ToggleCallbacks[k](v)
+                end
+                if SliderCallbacks[k] then
+                    SliderCallbacks[k](v)
+                end
+            end
             SendNotify("ModWare Hub", "Config '" .. targetName .. "' Loaded!", 3)
         else
             SendNotify("ModWare Hub", "Config Error", 3)
@@ -1242,7 +1208,15 @@ task.spawn(function()
             if isfile(fileName) then
                 task.wait(0.5)
                 local decoded = HttpService:JSONDecode(readfile(fileName))
-                DeserializeData(decoded)
+                for k, v in pairs(decoded) do
+                    _G[k] = v
+                    if ToggleCallbacks[k] then
+                        ToggleCallbacks[k](v)
+                    end
+                    if SliderCallbacks[k] then
+                        SliderCallbacks[k](v)
+                    end
+                end
                 SendNotify("ModWare Hub", "AutoLoad Enabled  (" .. autoName .. ")!", 3)
             end
         end
@@ -4141,7 +4115,7 @@ RunService.Heartbeat:Connect(function()
                                 buildingName = "Big Ol' Hut"
                             })
                         end)
-                        break
+                        break -- Coloca uma por ciclo (respeitando o delay de 0.1s) para prender todos sequencialmente sem falhas
                     end
                 end
             end
